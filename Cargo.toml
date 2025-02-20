@@ -1,0 +1,10 @@
+[package]
+name = "avian_determinism_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.15.2"
+avian2d = "0.2.1"
+bytemuck = "1.21.0"
+rand = "0.9.0"
