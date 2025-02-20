@@ -14,14 +14,14 @@
 //! This test is based on the `FallingHinges` test in the Box2D physics engine:
 //! <https://github.com/erincatto/box2d/blob/90c2781f64775085035655661d5fe6542bf0fbd5/samples/sample_determinism.cpp>
 
-use avian2d::{
+use avian3d::{
     math::{AdjustPrecision, Scalar, Vector, PI},
     prelude::*,
 };
 use bevy::tasks::futures_lite::StreamExt;
 use bevy::{
     color::palettes::tailwind::CYAN_400, input::common_conditions::input_just_pressed, prelude::*,
-    render::camera::ScalingMode,
+    prelude::*,
 };
 use bytemuck::{Pod, Zeroable};
 
@@ -60,35 +60,37 @@ struct Step(usize);
 
 fn setup_scene(
     mut commands: Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
+    // Directional light
     commands.spawn((
-        Camera2d,
-        Projection::from(OrthographicProjection {
-            scaling_mode: ScalingMode::FixedHorizontal {
-                viewport_width: 40.0,
-            },
-            ..OrthographicProjection::default_2d()
-        }),
-        Transform::from_xyz(0.0, 7.5, 0.0),
+        DirectionalLight {
+            illuminance: 5000.0,
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::default().looking_at(Vec3::new(-1.0, -2.5, -1.5), Vec3::Y),
     ));
 
-    let ground_shape = Rectangle::new(40.0, 2.0);
+    // Camera
     commands.spawn((
-        Name::new("Ground"),
+        Camera3d::default(),
+        Transform::from_translation(Vec3::new(0.0, 12.0, 40.0)).looking_at(Vec3::Y * 5.0, Vec3::Y),
+    ));
+
+    let cube_mesh = meshes.add(Cuboid::default());
+
+    // Ground
+    commands.spawn((
+        Mesh3d(cube_mesh.clone()),
+        MeshMaterial3d(materials.add(Color::srgb(0.7, 0.7, 0.8))),
+        Transform::from_xyz(0.0, -2.0, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),
         RigidBody::Static,
-        Collider::from(ground_shape),
-        Mesh2d(meshes.add(ground_shape)),
-        MeshMaterial2d(materials.add(Color::WHITE)),
-        Transform::from_xyz(0.0, -1.0, 0.0),
+        Collider::cuboid(1.0, 1.0, 1.0),
     ));
 
-    let half_size = 0.25;
-    let square_shape = Rectangle::new(2.0 * half_size, 2.0 * half_size);
-    let square_collider = Collider::from(square_shape);
-    let square_mesh = meshes.add(square_shape);
-    let square_material = materials.add(Color::from(CYAN_400));
+    let half_size = 0.5;
 
     let offset = 0.4 * half_size;
     let delta_x = 10.0 * half_size;
@@ -103,21 +105,18 @@ fn setup_scene(
         // let mut prev_entity = None;
 
         for row in 0..ROWS {
-            let entity = commands
-                .spawn((
-                    Name::new("Square ({col}, {row})"),
-                    RigidBody::Dynamic,
-                    square_collider.clone(),
-                    Mesh2d(square_mesh.clone()),
-                    MeshMaterial2d(square_material.clone()),
-                    Transform::from_xyz(
-                        x + offset * row as f32,
-                        half_size + 2.0 * half_size * row as f32,
-                        0.0,
-                    )
-                        .with_rotation(Quat::from_rotation_z(0.1 * row as f32 - 1.0)),
-                ))
-                .id();
+            commands.spawn((
+                Name::new("Square ({col}, {row})"),
+                RigidBody::Dynamic,
+                Mesh3d(cube_mesh.clone()),
+                MeshMaterial3d(materials.add(Color::srgb(0.2, 0.7, 0.9))),
+                Transform::from_xyz(
+                    x + offset * row as f32,
+                    half_size + 2.0 * half_size * row as f32,
+                    0.0,
+                ),
+                Collider::cuboid(1.0, 1.0, 1.0),
+            ));
         }
     }
 }
@@ -202,7 +201,7 @@ fn clear_scene(
 #[repr(C)]
 struct Isometry {
     translation: Vector,
-    rotation: Scalar,
+    rotation: [f32; 4],
 }
 
 fn update_hash(
@@ -225,8 +224,8 @@ fn update_hash(
 
     for (position, rotation) in transforms_vec {
         let isometry = Isometry {
-            translation: position.0,
-            rotation: rotation.as_radians(),
+            translation: position.0.into(),
+            rotation: rotation.0.into(),
         };
         hash = djb2_hash(hash, bytemuck::bytes_of(&isometry));
     }
